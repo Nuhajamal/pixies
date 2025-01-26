@@ -1,0 +1,100 @@
+from pytube import YouTube
+import cv2
+import face_recognition
+import numpy as np
+import os
+from datetime import datetime
+
+# Fetch frames from a YouTube video using OpenCV-compatible local file
+def fetch_frames(youtube_url):
+    try:
+        yt = YouTube(youtube_url)
+        stream = yt.streams.filter(file_extension='mp4').get_highest_resolution()
+        local_path = 'video.mp4'
+        print(f"Downloading video: {yt.title}")
+        stream.download(filename=local_path)
+        print("Download completed!")
+        cap = cv2.VideoCapture(local_path)
+        while cap.isOpened():
+            success, frame = cap.read()
+            if not success:
+                break
+            yield frame
+        cap.release()
+        os.remove(local_path)  # Clean up the downloaded video
+    except Exception as e:
+        print(f"Error fetching frames: {e}")
+
+# Encode known faces from the images
+def find_encodings(images):
+    encode_list = []
+    for img in images:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        try:
+            encode = face_recognition.face_encodings(img)[0]
+            encode_list.append(encode)
+        except IndexError:
+            print("No face detected in an image, skipping.")
+    return encode_list
+
+# Mark attendance in a CSV file
+def mark_attendance(name):
+    file_path = 'attendance.csv'
+    with open(file_path, 'a+') as f:
+        f.seek(0)
+        lines = f.readlines()
+        recorded_names = [line.split(',')[0] for line in lines]
+
+        if name not in recorded_names:
+            now = datetime.now()
+            f.write(f'{name},{now.strftime("%Y-%m-%d")},{now.strftime("%H:%M:%S")}\n')
+            print(f"Attendance marked for {name}")
+
+# Process video frames to detect and recognize faces
+def process_frames(frames):
+    path = 'face1/ImagesAttendence'
+    images = []
+    class_names = []
+
+    # Load images and names
+    for filename in os.listdir(path):
+        img = cv2.imread(f'{path}/{filename}')
+        images.append(img)
+        class_names.append(os.path.splitext(filename)[0])
+    print("Loaded classes:", class_names)
+
+    encode_list_known = find_encodings(images)
+    print("Face encodings complete.")
+
+    for frame in frames:
+        img_small = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
+        img_small = cv2.cvtColor(img_small, cv2.COLOR_BGR2RGB)
+
+        face_locations = face_recognition.face_locations(img_small)
+        face_encodings = face_recognition.face_encodings(img_small, face_locations)
+
+        for encode_face, face_loc in zip(face_encodings, face_locations):
+            matches = face_recognition.compare_faces(encode_list_known, encode_face)
+            face_distances = face_recognition.face_distance(encode_list_known, encode_face)
+            best_match_index = np.argmin(face_distances)
+
+            if matches[best_match_index]:
+                name = class_names[best_match_index].upper()
+                print(f"Recognized: {name}")
+                y1, x2, y2, x1 = [v * 4 for v in face_loc]
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.rectangle(frame, (x1, y2 - 35), (x2, y2), (0, 255, 0), cv2.FILLED)
+                cv2.putText(frame, name, (x1 + 6, y2 - 6), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+                mark_attendance(name)
+
+        cv2.imshow('Face Recognition', frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cv2.destroyAllWindows()
+
+# Main function
+if __name__ == "__main__":
+    youtube_url = 'https://www.youtube.com/watch?v=gV6hP9wpMW8'
+    frames = fetch_frames(youtube_url)
+    process_frames(frames)
