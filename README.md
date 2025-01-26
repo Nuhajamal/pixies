@@ -1,5 +1,5 @@
 **HOSTED PROJECT LINK**  
-[Not Available Yet] (Replace with your hosted link if applicable.)
+https://github.com/Nuhajamal/pixies
 
 **PROJECT DESCRIPTION**  
 This project integrates face recognition into a CCTV system for real-time monitoring and automated attendance tracking. It simplifies surveillance by identifying individuals in live video streams and logging their attendance efficiently.
